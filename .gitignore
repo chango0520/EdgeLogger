@@ -1,0 +1,33 @@
+# Keil MDK-ARM 编译中间文件与输出文件
+*.o
+*.d
+*.crf
+*.lnp
+*.axf
+*.htm
+*.build_log.htm
+*.dep
+*.map
+*.lst
+*.sct
+*.scvd
+*.hex
+*.bin
+*.bak
+JLinkLog.txt
+
+# Keil 本地工程配置与调试文件 (用户强相关)
+*.uvguix.*
+*.uvoptx
+DebugConfig/
+MDK-ARM/Listings/
+MDK-ARM/Objects/
+
+# STM32CubeMX 备份文件
+*.bak
+
+# 操作系统与通用编辑器文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

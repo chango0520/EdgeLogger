@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
 #include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
@@ -25,6 +26,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_sensor.h"
+#include "app_mqtt.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -67,7 +70,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	uint32_t last_pub_tick = 0;
+  float current_temp = 0.0f;
+  float current_hum = 0.0f;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -88,12 +93,29 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-	printf("\r\n[SYS] STM32F407VET6 System Startup...\r\n");
+	printf("\r\n=======================================\r\n");
+  printf("[SYS] STM32F407VET6 System Startup...\r\n");
+  printf("=======================================\r\n");
+	
 	App_Sensor_Init();
 
+	if (App_MQTT_Init())
+  {
+      printf("[SYS] MQTT Connection Success!\r\n");
+  }
+  else
+  {
+      printf("[SYS] MQTT Connection Failed! System will Reset.\r\n");
+      HAL_Delay(2000);
+      NVIC_SystemReset(); /* 连接失败直接硬件复位，依靠看门狗或重试逻辑 */
+  }
+  /* 记录初始时间，准备进入主循环 */
+  last_pub_tick = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -101,6 +123,22 @@ int main(void)
   while (1)
   {
 		App_Sensor_Task();
+		App_MQTT_Task();
+		if (HAL_GetTick() - last_pub_tick >= 5000)
+		{
+			last_pub_tick = HAL_GetTick();
+			
+			/* 获取最新有效数据 */
+			if (App_Sensor_GetData(&current_temp, &current_hum))
+			{
+					/* 触发底层DMA非阻塞发送，将温湿度上传至 OneNET */
+					App_MQTT_Publish_SensorData(current_temp, current_hum);
+			}
+			else
+			{
+					printf("[SYS] Sensor data invalid, skip publish.\r\n");
+			}
+		}
 		HAL_Delay(10);
     /* USER CODE END WHILE */
 

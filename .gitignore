@@ -31,3 +31,6 @@ MDK-ARM/Objects/
 .idea/
 .DS_Store
 Thumbs.db
+
+# OnetNET配置文件
+config/config.h

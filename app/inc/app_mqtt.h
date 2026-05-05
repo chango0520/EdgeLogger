@@ -4,15 +4,6 @@
 #include "main.h"
 #include <stdbool.h>
 
-/* WIFI配置 */
-#define WIFI_SSID           "1103"
-#define WIFI_PASSWORD       "13880233049"
-
-/* 鉴权三元组 */
-#define ONENET_CLIENT_ID    "test"                                          // 对应 设备名称
-#define ONENET_USERNAME     "5vsUPgQ778"                                    // 对应 产品ID
-#define ONENET_PASSWORD     "version=2018-10-31&res=products%2F5vsUPgQ778&et=1840888016&method=sha1&sign=Yri%2F5VHaQJWLy0aVHs2%2FQofoP04%3D" // 对应 Token
-
 /* 平台连接参数 */
 #define ONENET_MQTT_BROKER  "mqtts.heclouds.com"
 #define ONENET_MQTT_PORT    1883

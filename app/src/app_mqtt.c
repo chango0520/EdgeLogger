@@ -1,5 +1,6 @@
 #include "app_mqtt.h"
 #include "esp8266.h"
+#include "config.h"
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>

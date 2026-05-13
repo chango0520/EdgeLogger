@@ -4,16 +4,14 @@
 #include "stm32f4xx_hal.h"
 
 
-#define SHT30_ADDR_GND         0x44 //addr½ÓµØÄ¬ÈÏÎª0x44
-#define SHT30_ADDR_VDD         0x45
+#define SHT30_ADDR        0x44 //  SHT30åœ°å€
 
-#define SHT30_CMD_SOFT_RESET   0x30A2
-#define SHT30_CMD_MEAS_HIGHREP 0x2400  // ¸ßÖØ¸´ĞÔ£¬·ÇÊ±ÖÓÀ­ÉìÊ¹ÄÜ
-
+#define SHT30_CMD_SOFT_RESET   0x30A2 //è½¯å¤ä½
+#define SHT30_CMD_MEAS_HIGHREP 0x2400 //é«˜æ€§èƒ½
 
 typedef struct {
-    I2C_HandleTypeDef *hi2c;    // Ö¸Ïò I2C ÍâÉè¾ä±ú
-    uint8_t addr;               // Æ÷¼ş 7 Î»µØÖ·
+    I2C_HandleTypeDef *hi2c;    // I2Cå¥æŸ„
+    uint8_t addr;               // å¯¹åº”åœ°å€
 } SHT30_HandleTypeDef;
 
 

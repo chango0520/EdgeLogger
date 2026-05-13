@@ -27,7 +27,6 @@
 /* USER CODE BEGIN Includes */
 #include "app_sensor.h"
 #include "app_mqtt.h"
-#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,7 +58,14 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#include <stdio.h> 
 
+//printfé‡å®šå‘åˆ°USART2
+int fputc(int ch, FILE *f){
+	HAL_UART_Transmit(&huart2,(uint8_t *)&ch, 1, 10);
+	//ç›¸å½“äºŽ uint8_t c = (uint8_t)ch; ç„¶åŽç”¨&c
+	return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -99,45 +105,33 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 	printf("\r\n=======================================\r\n");
-  printf("[SYS] STM32F407VET6 System Startup...\r\n");
+  printf("[SYS] EdgeLogger System Startup...\r\n");
   printf("=======================================\r\n");
-	
-	App_Sensor_Init();
 
-	if (App_MQTT_Init())
-  {
-      printf("[SYS] MQTT Connection Success!\r\n");
-  }
-  else
-  {
-      printf("[SYS] MQTT Connection Failed! System will Reset.\r\n");
-      HAL_Delay(2000);
-      NVIC_SystemReset(); /* Á¬½ÓÊ§°ÜÖ±½ÓÓ²¼þ¸´Î»£¬ÒÀ¿¿¿´ÃÅ¹·»òÖØÊÔÂß¼­ */
-  }
-  /* ¼ÇÂ¼³õÊ¼Ê±¼ä£¬×¼±¸½øÈëÖ÷Ñ­»· */
-  last_pub_tick = HAL_GetTick();
+  App_Sensor_Init();
+	if(App_MQTT_Init()) printf("[MQTT] MQTT_2_OneNET Initialization Completed!\r\n");
+	else {
+		printf("[MQTT] MQTT_2_OneNET Initialization Failed!\r\n");
+		HAL_Delay(2000);
+		NVIC_SystemReset();
+	}
+	last_pub_tick = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
+  {	
 		App_Sensor_Task();
 		App_MQTT_Task();
+		
 		if (HAL_GetTick() - last_pub_tick >= 5000)
 		{
 			last_pub_tick = HAL_GetTick();
-			
-			/* »ñÈ¡×îÐÂÓÐÐ§Êý¾Ý */
-			if (App_Sensor_GetData(&current_temp, &current_hum))
-			{
-					/* ´¥·¢µ×²ãDMA·Ç×èÈû·¢ËÍ£¬½«ÎÂÊª¶ÈÉÏ´«ÖÁ OneNET */
-					App_MQTT_Publish_SensorData(current_temp, current_hum);
-			}
-			else
-			{
-					printf("[SYS] Sensor data invalid, skip publish.\r\n");
-			}
+		
+			if (App_Sensor_GetData(&current_temp, &current_hum)) 
+				App_MQTT_Publish_SensorData(current_temp, current_hum);
+			else printf("[SYS] Sensor data invalid, skip publish.\r\n");
 		}
 		HAL_Delay(10);
     /* USER CODE END WHILE */

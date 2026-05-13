@@ -1,31 +1,27 @@
 #include "app_sensor.h"
-#include "sht30.h"      /* µ×²ãÇı¶¯ */
-#include "i2c.h"        /* hi2c1¾ä±ú */
-#include <stdio.h>      /* printf ÓÃÓÚ µ÷ÊÔ */
+#include "sht30.h"      /* é©±åŠ¨ */
+#include "i2c.h"        /* hi2c1 */
+#include <stdio.h>      /* printf */
 
-/* ºê¶¨Òå£º´«¸ĞÆ÷²É¼¯ÖÜÆÚ (µ¥Î»£ººÁÃë)¡£½¨Òé2Ãë£¬SHT30¾ßÓĞ×Ô·¢ÈÈÌØĞÔ£¬¸ßÆµ¶ÁÈ¡»áÊ¹ÎÂ¶ÈÆ«¸ß */
+/* è·å–æ¸©æ¹¿åº¦æ—¶é—´é—´éš” */
 #define SENSOR_READ_INTERVAL_MS 2000
 
-/* ¾²Ì¬È«¾Ö±äÁ¿¶¨Òå (¾Ö²¿×÷ÓÃÓò) */
+/* é™æ€å˜é‡ï¼Œä»…é™äºè¯¥æ–‡ä»¶è®¿é—® */
 static SHT30_HandleTypeDef sht30_dev;
 static float sys_temperature = 0.0f;
 static float sys_humidity = 0.0f;
 static bool data_valid = false;
 
 /**
- * @brief ´«¸ĞÆ÷Ó¦ÓÃ²ã³õÊ¼»¯
+ * @brief SHT30åˆå§‹åŒ–
  */
 void App_Sensor_Init(void)
 {
     printf("[Sensor] Initializing SHT30 on I2C1...\r\n");
     
-    /* 1. ³õÊ¼»¯ SHT30 ¾ä±ú
-     * ¸ù¾İĞ¾Æ¬ÊÖ²áÓëÓ²¼ş·ÖÅä£ºI2C1(PB6/PB7)
-     * ADDR Ä¬ÈÏ½Ó GND (0x44)
-     */
-    SHT30_Init(&sht30_dev, &hi2c1, SHT30_ADDR_GND);
+    SHT30_Init(&sht30_dev, &hi2c1, SHT30_ADDR);
     
-    /* 2. Ö´ĞĞÒ»´Î³õÊ¼¶ÁÈ¡£¬È·ÈÏ×ÜÏßÓëÄ£¿éÎïÀíÁ¬½Ó×´Ì¬ */
+    /* å°è¯•é¦–æ¬¡è¯»å–æ¸©æ¹¿åº¦ */
     if (SHT30_ReadTempHum(&sht30_dev, &sys_temperature, &sys_humidity) == HAL_OK) 
     {
         data_valid = true;
@@ -39,14 +35,14 @@ void App_Sensor_Init(void)
 }
 
 /**
- * @brief ´«¸ĞÆ÷ÒµÎñÂÖÑ¯ÈÎÎñ£¬ĞèÔÚ main.c µÄ while(1) ÖĞÑ­»·µ÷ÓÃ
+ * @brief å¾ªç¯æ‰§è¡Œçš„ä»»åŠ¡å‡½æ•°ï¼Œæ”¾åœ¨main.cçš„while(1)å†…
  */
 void App_Sensor_Task(void)
 {
     static uint32_t last_tick = 0;
     uint32_t current_tick = HAL_GetTick();
 
-    /* Ê±¼äÆ¬ÂÖÑ¯£ºµ½´ï¹æ¶¨ÖÜÆÚºóÖ´ĞĞ²É¼¯ */
+    /* ä¸€å®šé—´éš”é‡‡é›†æ¸©æ¹¿åº¦ */
     if ((current_tick - last_tick) >= SENSOR_READ_INTERVAL_MS) 
     {
         last_tick = current_tick;
@@ -58,7 +54,7 @@ void App_Sensor_Task(void)
         } 
         else 
         {
-            /* Èô×ÜÏß¶Ï¿ª»ò CRC Ğ£ÑéÊ§°Ü£¬±ê¼ÇÊı¾İÎŞĞ§ */
+            /* è¯»å–é”™è¯¯ */
             data_valid = false;
             printf("[Sensor] Read Error! Data invalid.\r\n");
         }
@@ -66,10 +62,10 @@ void App_Sensor_Task(void)
 }
 
 /**
- * @brief »ñÈ¡×îĞÂÓĞĞ§µÄÎÂÊª¶ÈÊı¾İ
- * @param temp Ö¸Ïò´æ´¢ÎÂ¶ÈµÄÖ¸Õë
- * @param humi Ö¸Ïò´æ´¢Êª¶ÈµÄÖ¸Õë
- * @return true Êı¾İÓĞĞ§ / false Êı¾İÎŞĞ§»ò×ÜÏßÒì³£
+ * @brief æš´éœ²ç»™å…¶ä»–å¤–è®¾è¯»å–æ¸©æ¹¿åº¦çš„æ¥å£
+ * @param tempï¼šæ¸©åº¦
+ * @param humiï¼šæ¹¿åº¦
+ * @return true è·å–æˆåŠŸ / false è·å–å¤±è´¥
  */
 bool App_Sensor_GetData(float *temp, float *humi)
 {

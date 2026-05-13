@@ -1,135 +1,94 @@
 #include "app_mqtt.h"
 #include "esp8266.h"
 #include "config.h"
-#include "usart.h"
+#include "sht30.h"
 #include <stdio.h>
 #include <string.h>
 
-/* È«¾ÖDMA·¢ËÍ»º´æ£¬·ÀÖ¹Õ»Òç³ö»ò¾Ö²¿±äÁ¿ÉúÃüÖÜÆÚ½áÊø */
-static uint8_t mqtt_tx_buf[ESP8266_TX_MAX_LEN];
-
-/**
- * @brief  ³õÊ¼»¯WiFi²¢Á¬½ÓOneNETÆ½Ì¨ (×èÈûĞÍ£¬½öÔÚÏµÍ³Æô¶¯Ê±µ÷ÓÃ)
- * @retval true: Á¬½Ó³É¹¦ / false: Á¬½ÓÊ§°Ü
- */
 bool App_MQTT_Init(void)
 {
-		ESP8266_Init();
+    printf("[MQTT] Initializing ESP8266 on USART1...\r\n");
+    ESP8266_Init();
+
+    char cmd_buf[350];
+
+		printf("[MQTT] Restarting...\r\n");
+    if (ESP8266_SendCmd("AT+RST\r\n", "OK", 3000) != 0) return false;
+    HAL_Delay(3000);
 	
-    char cmd_buf[350]; // Password ½Ï³¤£¬·ÖÅä×ã¹»´óµÄ»º´æ
+		printf("[MQTT] Setting Mode...\r\n");
+    if (ESP8266_SendCmd("AT+CWMODE=1\r\n", "OK", 3000) != 0) return false;
+	
+    printf("[MQTT] Connecting to WiFi...\r\n");
+    snprintf(cmd_buf, sizeof(cmd_buf), "AT+CWJAP=\"%s\",\"%s\"\r\n",
+             WIFI_SSID, WIFI_PASSWORD);
+    if (ESP8266_SendCmd(cmd_buf, "OK", 3000) != 0) return false;
 
-    printf("[APP_MQTT] Resetting ESP8266...\r\n");
-    ESP8266_SendCmd_Block("AT+RST\r\n", "ready", 3000);
-    HAL_Delay(1000);
-
-    /* 1. ÉèÖÃ WiFi STA Ä£Ê½ */
-    if (!ESP8266_SendCmd_Block("AT+CWMODE=1\r\n", "OK", 1000)) return false;
-
-    /* 2. Á¬½Ó WiFi */
-    printf("[APP_MQTT] Connecting to WiFi...\r\n");
-    snprintf(cmd_buf, sizeof(cmd_buf), "AT+CWJAP=\"%s\",\"%s\"\r\n", WIFI_SSID, WIFI_PASSWORD);
-    if (!ESP8266_SendCmd_Block(cmd_buf, "WIFI GOT IP", 3000)) return false;
-
-    /* 3. ÅäÖÃ MQTT ÓÃ»§¼øÈ¨²ÎÊı */
-    printf("[APP_MQTT] Configuring MQTT Client...\r\n");
-    snprintf(cmd_buf, sizeof(cmd_buf), "AT+MQTTUSERCFG=0,1,\"%s\",\"%s\",\"%s\",0,0,\"\"\r\n", 
+    printf("[MQTT] Configuring MQTT Client...\r\n");
+    snprintf(cmd_buf, sizeof(cmd_buf),
+             "AT+MQTTUSERCFG=0,1,\"%s\",\"%s\",\"%s\",0,0,\"\"\r\n",
              ONENET_CLIENT_ID, ONENET_USERNAME, ONENET_PASSWORD);
-    if (!ESP8266_SendCmd_Block(cmd_buf, "OK", 3000)) return false;
+    if (ESP8266_SendCmd(cmd_buf, "OK", 3000) != 0) return false;
 
-    /* 4. Á¬½Ó OneNET Broker */
-    printf("[APP_MQTT] Connecting to OneNET Broker...\r\n");
-    snprintf(cmd_buf, sizeof(cmd_buf), "AT+MQTTCONN=0,\"%s\",%d,1\r\n", 
+    printf("[MQTT] Connecting to OneNET Broker...\r\n");
+    snprintf(cmd_buf, sizeof(cmd_buf), "AT+MQTTCONN=0,\"%s\",%d,1\r\n",
              ONENET_MQTT_BROKER, ONENET_MQTT_PORT);
-    if (!ESP8266_SendCmd_Block(cmd_buf, "OK", 10000)) return false;
+    if (ESP8266_SendCmd(cmd_buf, "OK", 10000) != 0) return false;
 
-    /* 5. ¶©ÔÄÎïÄ£ĞÍÏìÓ¦ Topic */
-    printf("[APP_MQTT] Subscribing to Reply Topic...\r\n");
-    snprintf(cmd_buf, sizeof(cmd_buf), "AT+MQTTSUB=0,\"%s\",1\r\n", ONENET_TOPIC_SUB_REPLY);
-    if (!ESP8266_SendCmd_Block(cmd_buf, "OK", 3000)) return false;
+    printf("[MQTT] Subscribing to Reply Topic...\r\n");
+    snprintf(cmd_buf, sizeof(cmd_buf), "AT+MQTTSUB=0,\"%s\",1\r\n",
+             ONENET_TOPIC_SUB_REPLY);
+    if (ESP8266_SendCmd(cmd_buf, "OK", 3000) != 0) return false;
 
-    printf("[APP_MQTT] OneNET Initialization Completed!\r\n");
-    
-    /* »Ö¸´DMA½ÓÊÕ×´Ì¬£¬×¼±¸½øÈëÂÖÑ¯·Ç×èÈûÄ£Ê½ */
-    esp8266_rx_flag = false;
-    esp8266_rx_len = 0;
-    HAL_UART_Receive_DMA(&huart1, esp8266_rx_buf, ESP8266_RX_MAX_LEN);
-    
+    // æ¸…é™¤å¯èƒ½æ®‹ç•™çš„æ ‡å¿—
+    ESP8266_ClearBuf();
     return true;
 }
 
-/**
- * @brief  ·â×°²¢·¢²¼SHT30ÎÂÊª¶ÈÊı¾İÖÁOneNETÎïÄ£ĞÍ (·Ç×èÈûDMA·¢ËÍ)
- * @param  temp: SHT30½âÎö³öµÄÎÂ¶ÈÖµ
- * @param  hum:  SHT30½âÎö³öµÄÊª¶ÈÖµ
- */
 void App_MQTT_Publish_SensorData(float temp, float hum)
 {
     char payload[150];
     char cmd[300];
 
-    /* 1. ×é×° OneNET ÎïÄ£ĞÍ JSON ×Ö·û´® 
-     * Ä¿±ê¸ñÊ½: {"id":"123","version":"1.0","params":{"temp":{"value":25.5},"hum":{"value":60.0}}}
-     * ±Ü¿Ó£ºATÖ¸Áî·¢ËÍË«ÒıºÅĞè×ªÒåÎª \\\"£¬²¿·Ö¹Ì¼ş¶ººÅĞè×ªÒåÎª \\,
-     */
-    snprintf(payload, sizeof(payload), 
-             "{\\\"id\\\":\\\"123\\\"\\,\\\"version\\\":\\\"1.0\\\"\\,\\\"params\\\":{\\\"temperature\\\":{\\\"value\\\":%.1f}\\,\\\"humidity\\\":{\\\"value\\\":%.1f}}}", 
+    snprintf(payload, sizeof(payload),
+             "{\\\"id\\\":\\\"123\\\"\\,\\\"version\\\":\\\"1.0\\\"\\,"
+             "\\\"params\\\":{\\\"temperature\\\":{\\\"value\\\":%.1f}\\,"
+             "\\\"humidity\\\":{\\\"value\\\":%.1f}}}",
              temp, hum);
 
-    /* 2. ×é×° AT+MQTTPUB Ö¸Áî */
-    snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",0,0\r\n", 
+    snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",0,0\r\n",
              ONENET_TOPIC_PUB_POST, payload);
 
-    /* 3. °²È«»ñÈ¡DMA·¢ËÍËø */
-    uint32_t wait_tick = HAL_GetTick();
-    while(!esp8266_tx_ready)
-    {
-        if(HAL_GetTick() - wait_tick > 200) {  // 200ms³¬Ê±·ÀÓù
-            HAL_UART_AbortTransmit(&huart1);
-            esp8266_tx_ready = true;
-            break;
-        }
-    }
-
-    /* 4. ¿½±´µ½È«¾Ö»º³åÇø²¢Æô¶¯DMA´«Êä */
-    uint16_t len = strlen(cmd);
-    if(len < ESP8266_TX_MAX_LEN)
-    {
-        memcpy(mqtt_tx_buf, cmd, len);
-        ESP8266_Send_DMA(mqtt_tx_buf, len);
-        
-        /* µ÷ÊÔ´òÓ¡£º¼à¿ØÉÏ´«µÄÊı¾İ */
-        printf("[APP_MQTT] Publish -> T: %.1f C, H: %.1f %%\r\n", temp, hum);
-    }
+    ESP8266_SendData((uint8_t *)cmd, strlen(cmd));
+    printf("[MQTT] Publish -> T: %.1f C, H: %.1f %%\r\n", temp, hum);
 }
 
 /**
- * @brief  MQTT ½ÓÊÕÂÖÑ¯ÈÎÎñ£¬´¦ÀíÆ½Ì¨ÏÂ·¢ÃüÁî»òĞÄÌø±£»î
- * @note   Ğè·ÅÖÃÔÚ main() µÄ while(1) Ñ­»·ÖĞµ÷ÓÃ
+ * @brief  MQTT ä»»åŠ¡ï¼šå¤„ç†äº‘ç«¯ä¸»åŠ¨æ¨é€çš„æ•°æ®
  */
 void App_MQTT_Task(void)
 {
-    /* ¼ì²éÊÇ·ñ´¥·¢´®¿Ú¿ÕÏĞÖĞ¶Ï²¢½ÓÊÕµ½ÍêÕûÊı¾İÖ¡ */
-    if (esp8266_rx_flag)
+    uint8_t frame[ESP8266_RX_BUF_SIZE];
+    uint16_t len = ESP8266_ReadFrame(frame, sizeof(frame));
+
+    if (len > 0)
     {
-        /* ·â¶Â×Ö·û´®Î²²¿£¬·ÀÖ¹Ô½½ç·ÃÎÊ */
-        esp8266_rx_buf[esp8266_rx_len] = '\0';
-        
-        /* ½âÎö¶©ÔÄÏÂ·¢±¨ÎÄ: ¸ñÊ½ +MQTTSUBRECV:0,"topic",length,payload */
-        if (strstr((char*)esp8266_rx_buf, "+MQTTSUBRECV") != NULL)
+        // ç¡®ä¿å­—ç¬¦ä¸²ç»“æŸ
+        if (len < sizeof(frame))
+            frame[len] = '\0';
+        else
+            frame[sizeof(frame) - 1] = '\0';
+
+        if (strstr((char *)frame, "+MQTTSUBRECV") != NULL)
         {
-            printf("[APP_MQTT] Receive Cloud Cmd: %s\r\n", esp8266_rx_buf);
-            /* TODO: ÔÚ´Ëµ÷ÓÃ JSON ½âÎö¿â£¨Èç cJSON£©´¦ÀíÔ¶³Ì¿ØÖÆÂß¼­ */
+            printf("[MQTT] Receive Cloud Cmd: %s\r\n", frame);
+            // TODO: è§£æ JSON å¹¶æ‰§è¡Œæ§åˆ¶æŒ‡ä»¤
         }
-        else if (strstr((char*)esp8266_rx_buf, "CLOSED") != NULL)
+        else if (strstr((char *)frame, "CLOSED") != NULL)
         {
-            printf("[APP_MQTT] Disconnected from Cloud! Rebooting...\r\n");
-            /* ´íÎó´¦Àí£º´¥·¢ÖØĞÂÁ¬½Ó»úÖÆ»òÓ²¼ş¸´Î» */
-            NVIC_SystemReset(); 
+            printf("[MQTT] Disconnected from Cloud! Rebooting...\r\n");
+            NVIC_SystemReset();
         }
-        
-        /* Çå¿Õ±êÖ¾Î»£¬ÖØÆôDMA×¼±¸½ÓÊÕÏÂÒ»Ö¡ */
-        esp8266_rx_flag = false;
-        esp8266_rx_len = 0;
-        HAL_UART_Receive_DMA(&huart1, esp8266_rx_buf, ESP8266_RX_MAX_LEN);
     }
 }
+

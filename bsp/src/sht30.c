@@ -1,18 +1,18 @@
 #include "sht30.h"
 
-/* ¶¨Òå±ê×¼ I2C ³¬Ê±Ê±¼ä£¬µ¥Î»£ºms£¬·ÀÖ¹Ó²¼şËÀËø */
+/* SHT30è¶…æ—¶æ—¶é—´ */
 #define SHT30_TIMEOUT 100
 
-/* ÄÚ²¿¸¨Öú£ºÏòSHT30·¢ËÍ16Î»ÃüÁî */
-static HAL_StatusTypeDef SHT30_WriteCommand(SHT30_HandleTypeDef *sht30, uint16_t cmd) {
+/* å‘é€å‘½ä»¤å‡½æ•° */
+static HAL_StatusTypeDef SHT30_WriteCmd(SHT30_HandleTypeDef *sht30, uint16_t cmd) {
     uint8_t buf[2];
     buf[0] = (cmd >> 8) & 0xFF;   
     buf[1] = cmd & 0xFF;
-    /* HAL¿âÒªÇó´«Èë8Î»µØÖ·£¬¼´7Î»µØÖ·×óÒÆ1Î» */
+    /* å‘é€å‘½ä»¤ */
     return HAL_I2C_Master_Transmit(sht30->hi2c, (uint16_t)(sht30->addr << 1), buf, 2, SHT30_TIMEOUT);
 }
 
-/* ÄÚ²¿¸¨Öú£ºCRC-8 Ğ£Ñé (¶àÏîÊ½ 0x31) */
+/* CRC8æ ¡éªŒå‡½æ•° */
 static uint8_t SHT30_CRC8(const uint8_t *data, uint8_t len) {
     uint8_t crc = 0xFF;
     for (uint8_t i = 0; i < len; i++) {
@@ -26,10 +26,10 @@ static uint8_t SHT30_CRC8(const uint8_t *data, uint8_t len) {
 }
 
 /**
- * @brief  ³õÊ¼»¯SHT30
- * @param  sht30 : Çı¶¯¾ä±úÖ¸Õë
- * @param  hi2c  : I2CÍâÉè¾ä±ú (Èç &hi2c1)
- * @param  addr  : SHT30µÄ7Î»µØÖ· (SHT30_ADDR_GND)
+ * @brief  SHT30åˆå§‹åŒ–
+ * @param  sht30 : å¥æŸ„
+ * @param  hi2c  : I2Cå¥æŸ„ (&hi2c1)
+ * @param  addr  : SHT30åœ°å€ (SHT30_ADDR)
  */
 void SHT30_Init(SHT30_HandleTypeDef *sht30, I2C_HandleTypeDef *hi2c, uint8_t addr) {
     if(sht30 == NULL || hi2c == NULL) return; 
@@ -37,16 +37,16 @@ void SHT30_Init(SHT30_HandleTypeDef *sht30, I2C_HandleTypeDef *hi2c, uint8_t add
     sht30->hi2c = hi2c;
     sht30->addr = addr;
     
-    /* ·¢ËÍÈí¸´Î»ÃüÁî²¢µÈ´ı´«¸ĞÆ÷ÖØÆô (¹æ¶¨×î¸ßºÄÊ± 1.5ms) */
-    SHT30_WriteCommand(sht30, SHT30_CMD_SOFT_RESET);
+    /* æœ€å¿«ä¹Ÿéœ€è¦ 1.5ms */
+    SHT30_WriteCmd(sht30, SHT30_CMD_SOFT_RESET);
     HAL_Delay(2); 
 }
 
 /**
- * @brief  ¶ÁÈ¡ÎÂÊª¶È£¨µ¥´Î²âÁ¿£¬·ÇÊ±ÖÓÀ­ÉìÄ£Ê½£©
- * @param  sht30 : Çı¶¯¾ä±ú
- * @param  temp  : Êä³öÎÂ¶È£¨¡ãC£©
- * @param  humi  : Êä³öÏà¶ÔÊª¶È£¨%RH£©
+ * @brief  è¯»å–æ¸©æ¹¿åº¦
+ * @param  sht30 : å¥æŸ„
+ * @param  temp  : è¯»å–çš„æ¸©åº¦
+ * @param  humi  : è¯»å–çš„æ¹¿åº¦
  * @retval HAL_StatusTypeDef
  */
 HAL_StatusTypeDef SHT30_ReadTempHum(SHT30_HandleTypeDef *sht30, float *temp, float *humi) {
@@ -56,27 +56,27 @@ HAL_StatusTypeDef SHT30_ReadTempHum(SHT30_HandleTypeDef *sht30, float *temp, flo
 
     if(sht30 == NULL) return HAL_ERROR;
 
-    /* 1. ·¢ËÍ²âÁ¿ÃüÁî£¨¸ßÖØ¸´ĞÔ£¬·ÇÊ±ÖÓÀ­Éì£© */
-    status = SHT30_WriteCommand(sht30, SHT30_CMD_MEAS_HIGHREP);
+    /* å…ˆè¿›è¡Œé«˜é‡å¤ç‡æµ‹é‡ */
+    status = SHT30_WriteCmd(sht30, SHT30_CMD_MEAS_HIGHREP);
     if (status != HAL_OK) return status;
 
-    /* 2. Èí¼şÑÓÊ±µÈ´ı²âÁ¿Íê³É (¸ßÖØ¸´ĞÔÄ£Ê½²âÁ¿×î´óºÄÊ± 15ms) */
+    /* æœ€å¿«éœ€è¦ 15ms */
     HAL_Delay(15);
 
-    /* 3. ¶ÁÈ¡ 6 ×Ö½ÚÊı¾İ¡£×¢£ºHAL ¿âÒªÇó¶Á²Ù×÷µÄ´Ó»úµØÖ·×îµÍÎ»Îª 1 */
+    /* æ¥æ”¶æ•°æ® */
     status = HAL_I2C_Master_Receive(sht30->hi2c, (uint16_t)((sht30->addr << 1) | 0x01), buf, 6, SHT30_TIMEOUT);
     if (status != HAL_OK) return status;
 
-    /* 4. Êı¾İÒ»ÖÂĞÔ CRC Ğ£Ñé */
+    /* æ ¡éªŒæ•°æ® */
     if ((SHT30_CRC8(buf, 2) != buf[2]) || (SHT30_CRC8(buf + 3, 2) != buf[5])) {
         return HAL_ERROR;
     }
 
-    /* 5. »»ËãÕæÊµÎïÀíÁ¿ */
+    /* æ‹¼æ¥æ•°æ® */
     rawTemp = ((uint16_t)buf[0] << 8) | buf[1];
     rawHumi = ((uint16_t)buf[3] << 8) | buf[4];
 
-    /* Ö¸ÕëÅĞ¿Õ±£»¤£¬ÔÊĞíÊ¹ÓÃÕß´«Èë NULL ±íÊ¾²»ĞèÒª¸ÃÏîÊı¾İ */
+    /* è®¡ç®—å‡ºçœŸå®æ•°æ® */
     if(temp != NULL) {
         *temp = -45.0f + 175.0f * ((float)rawTemp / 65535.0f);
     }

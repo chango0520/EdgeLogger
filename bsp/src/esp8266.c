@@ -1,112 +1,141 @@
 #include "esp8266.h"
 #include "usart.h"
 #include <string.h>
+#include <stdio.h>
 
-uint8_t esp8266_rx_buf[ESP8266_RX_MAX_LEN];
+// å†…éƒ¨ DMA æ¥æ”¶ç¼“å†²åŒºï¼ˆä¸å¯¹å¤–æš´éœ²ï¼‰
+static uint8_t dma_rx_buf[ESP8266_RX_BUF_SIZE];
+
+// ç¯å½¢ç¼“å†²åŒºå®ä¾‹
+ring_buffer_t esp_rb;
+
+// å¸§çŠ¶æ€
 volatile uint16_t esp8266_rx_len = 0;
-volatile bool esp8266_rx_flag = false;
-volatile bool esp8266_tx_ready = true; 
+volatile uint8_t  esp8266_rx_flag = 0;
 
 /**
- * @brief  ³õÊ¼»¯ESP8266µ×²ã´®¿ÚDMAºÍÖĞ¶Ï
+ * @brief  ESP8266 åˆå§‹åŒ–
  */
 void ESP8266_Init(void)
 {
-    esp8266_tx_ready = true;
-    esp8266_rx_flag = false;
-    esp8266_rx_len = 0;
-    memset(esp8266_rx_buf, 0, ESP8266_RX_MAX_LEN);
-
-    /* ¿ªÆô´®¿ÚDMA½ÓÊÕ */
-    HAL_UART_Receive_DMA(&huart1, esp8266_rx_buf, ESP8266_RX_MAX_LEN);
-    /* Ê¹ÄÜUSART1¿ÕÏĞÖĞ¶Ï */
-    __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
+    ring_buffer_init(&esp_rb);
+    ESP8266_ClearBuf();
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buf, ESP8266_RX_BUF_SIZE);
 }
 
 /**
- * @brief  ×èÈûÊ½·¢ËÍATÖ¸Áî²¢µÈ´ıÌØ¶¨Ó¦´ğ (ÊÊÓÃÓÚ³õÊ¼»¯½×¶Î)
- * @param  cmd: ATÖ¸Áî×Ö·û´®
- * @param  ack: ÆÚÍûµÄÓ¦´ğ×Ö·û´® (Èç "OK")
- * @param  timeout_ms: ³¬Ê±Ê±¼ä
- * @retval true: ³É¹¦ÊÕµ½Ó¦´ğ / false: ³¬Ê±»òÊ§°Ü
+ * @brief  æ¸…ç©ºæ¥æ”¶ç¼“å†²åŒºä¸å¸§çŠ¶æ€
  */
-bool ESP8266_SendCmd_Block(const char *cmd, const char *ack, uint32_t timeout_ms)
+void ESP8266_ClearBuf(void)
 {
-    /* È·±£ÉÏÒ»´ÎDMA·¢ËÍÍê³É */
-    uint32_t wait_tick = HAL_GetTick();
-    while(!esp8266_tx_ready) {
-        if(HAL_GetTick() - wait_tick > 500) {
-            HAL_UART_AbortTransmit(&huart1);
-            esp8266_tx_ready = true;
-        }
-    }
-
-    esp8266_rx_flag = false;
+    ring_buffer_clear(&esp_rb);
     esp8266_rx_len = 0;
-    memset(esp8266_rx_buf, 0, ESP8266_RX_MAX_LEN);
+    esp8266_rx_flag = 0;
+}
 
-    /* ÖØĞÂ¿ªÆôDMA½ÓÊÕ£¬×¼±¸½ÓÊÕÓ¦´ğ */
-    HAL_UART_Receive_DMA(&huart1, esp8266_rx_buf, ESP8266_RX_MAX_LEN);
+/**
+ * @brief  åº•å±‚é˜»å¡å‘é€
+ */
+void ESP8266_SendData(uint8_t *data, uint16_t len)
+{
+    HAL_UART_Transmit(&huart1, data, len, HAL_MAX_DELAY);
+}
 
-    /* Ê¹ÓÃÂÖÑ¯·½Ê½·¢ËÍÖ¸Áî£¬È·±£Ö¸Áî·¢Íê */
-    HAL_UART_Transmit(&huart1, (uint8_t *)cmd, strlen(cmd), 1000);
+/**
+ * @brief  å‘é€ AT æŒ‡ä»¤å¹¶ç­‰å¾…æœŸæœ›åº”ç­”ï¼ˆé˜»å¡ï¼‰
+ */
+uint8_t ESP8266_SendCmd(char *cmd, char *ack, uint32_t timeout)
+{
+    ESP8266_ClearBuf();
+    HAL_UART_Transmit(&huart1, (uint8_t *)cmd, strlen(cmd), HAL_MAX_DELAY);
 
-    /* µÈ´ı½ÓÊÕÓ¦´ğ */
-    uint32_t start_tick = HAL_GetTick();
-    while((HAL_GetTick() - start_tick) < timeout_ms)
+    if (ack == NULL) return 0;
+
+    uint32_t tickstart = HAL_GetTick();
+    uint8_t  frame[ESP8266_RX_BUF_SIZE];
+
+    while ((HAL_GetTick() - tickstart) < timeout)
     {
-        if(esp8266_rx_flag)
+        if (esp8266_rx_flag)
         {
-            esp8266_rx_buf[esp8266_rx_len] = '\0'; // È·±£×Ö·û´®½áÊø·û
-            if(strstr((char *)esp8266_rx_buf, ack) != NULL)
+            uint16_t len = esp8266_rx_len;
+            esp8266_rx_flag = 0;            // æ¶ˆè´¹å¸§æ ‡å¿—
+
+            if (len > ESP8266_RX_BUF_SIZE)
+                len = ESP8266_RX_BUF_SIZE;
+
+            uint32_t n = ring_buffer_read_multi(&esp_rb, frame, len);
+
+            if (n > 0)
             {
-                esp8266_rx_flag = false;
-                return true; 
+                // ç¡®ä¿å­—ç¬¦ä¸²ç»“æŸï¼ˆé˜²æ­¢ strstr è¶Šç•Œï¼‰
+                if (n < ESP8266_RX_BUF_SIZE)
+                    frame[n] = '\0';
+                else
+                    frame[ESP8266_RX_BUF_SIZE - 1] = '\0';
+								
+								printf("[ESP8266 RX] %s\r\n", (char *)frame);
+
+                if (strstr((char *)frame, ack) != NULL)
+                    return 0;
             }
-            /* ÊÕµ½Êı¾İµ«²»ÊÇÆÚÍûµÄÓ¦´ğ£¬¼ÌĞøÇå¿Õ²¢½ÓÊÕ */
-            esp8266_rx_flag = false;
-            HAL_UART_Receive_DMA(&huart1, esp8266_rx_buf, ESP8266_RX_MAX_LEN);
         }
     }
-    return false;
+
+    return 1;   // è¶…æ—¶
 }
 
 /**
- * @brief  DMA·Ç×èÈû·¢ËÍÊı¾İ (ÊÊÓÃÓÚMQTTĞÄÌø¡¢·¢²¼±¨ÎÄ)
+ * @brief  åº”ç”¨å±‚è¯»å–æœ€è¿‘ä¸€å¸§æ•°æ®ï¼ˆå®‰å…¨ï¼Œæ¶ˆè´¹æ•°æ®ï¼‰
+ * @param  buf: ç”¨æˆ·ç¼“å†²åŒº
+ * @param  max_len: ç¼“å†²åŒºå¤§å°
+ * @return å®é™…è¯»å‡ºçš„å­—èŠ‚æ•°ï¼ˆ0 è¡¨ç¤ºæ— æ•°æ®æˆ–å·²è¢«æ¶ˆè´¹ï¼‰
  */
-HAL_StatusTypeDef ESP8266_Send_DMA(uint8_t *pData, uint16_t Size)
+uint16_t ESP8266_ReadFrame(uint8_t *buf, uint16_t max_len)
 {
-    if (!esp8266_tx_ready) return HAL_BUSY;
-    
-    esp8266_tx_ready = false; 
-    return HAL_UART_Transmit_DMA(&huart1, pData, Size);
+    if (!esp8266_rx_flag || buf == NULL || max_len == 0)
+        return 0;
+
+    uint16_t len = esp8266_rx_len;
+
+    // å…ˆæ¸…é™¤æ ‡å¿—ï¼Œé¿å…é‡å¤æ¶ˆè´¹ï¼ˆåç»­å³ä½¿ä¸­æ–­æ›´æ–°ä¹Ÿä¸å½±å“æœ¬æ¬¡è¯»å–ï¼‰
+    esp8266_rx_flag = 0;
+
+    if (len > max_len)
+        len = max_len;
+
+    uint32_t n = ring_buffer_read_multi(&esp_rb, buf, len);
+    return (uint16_t)n;
 }
 
 /**
- * @brief  ESP8266 ´®¿Ú¿ÕÏĞÖĞ¶Ï´¦Àí»Øµ÷Âß¼­ (ÔÚstm32f4xx_it.cÖĞµ÷ÓÃ)
+ * @brief  UART æ¥æ”¶äº‹ä»¶å›è°ƒï¼ˆIDLE/DMA æ»¡ä¸­æ–­ï¼‰
  */
-void ESP8266_IDLE_Callback(UART_HandleTypeDef *huart)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == USART1)
     {
-        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_IDLE) != RESET)
-        {
-            __HAL_UART_CLEAR_IDLEFLAG(huart);
-            HAL_UART_DMAStop(huart);
-            
-            esp8266_rx_len = ESP8266_RX_MAX_LEN - __HAL_DMA_GET_COUNTER(huart->hdmarx);
-            esp8266_rx_flag = true;
-        }
+        // å°† DMA æ•°æ®å†™å…¥ç¯å½¢ç¼“å†²åŒº
+        ring_buffer_write_multi(&esp_rb, dma_rx_buf, Size);
+
+        // è®°å½•å¸§é•¿åº¦ä¸æ ‡å¿—
+        esp8266_rx_len = Size;
+        esp8266_rx_flag = 1;
+
+        // é‡æ–°å¯åŠ¨ DMA+IDLE æ¥æ”¶
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buf, ESP8266_RX_BUF_SIZE);
     }
 }
 
 /**
- * @brief ´®¿Ú·¢ËÍÍê³É»Øµ÷º¯Êı (ÓÉÏµÍ³DMA2_Stream7ÖĞ¶Ïµ×²ãµ÷ÓÃ)
+ * @brief  UART åœ¨æ¯æ¬¡è¢«å™ªå£°æ‰“æ­»åèƒ½ç«‹å³å¤æ´»
  */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        esp8266_tx_ready = true; 
+        // é‡å¯ DMA æ¥æ”¶
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buf, ESP8266_RX_BUF_SIZE);
     }
 }
+

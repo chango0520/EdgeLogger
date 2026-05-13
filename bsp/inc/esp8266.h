@@ -1,24 +1,22 @@
 #ifndef __ESP8266_H
 #define __ESP8266_H
 
-#include "main.h"
-#include <stdbool.h>
-#include <stdint.h>
+#include "stm32f4xx_hal.h"
+#include "ringbuffer.h"
 
-#define ESP8266_RX_MAX_LEN 1024 
-#define ESP8266_TX_MAX_LEN 512
+#define ESP8266_RX_BUF_SIZE 1024
 
-extern uint8_t esp8266_rx_buf[ESP8266_RX_MAX_LEN];
+extern ring_buffer_t esp_rb;
+
 extern volatile uint16_t esp8266_rx_len;
-extern volatile bool esp8266_rx_flag;
-extern volatile bool esp8266_tx_ready;
+extern volatile uint8_t esp8266_rx_flag;
 
-/* 硬件与中断初始化 */
 void ESP8266_Init(void);
-void ESP8266_IDLE_Callback(UART_HandleTypeDef *huart);
+void ESP8266_ClearBuf(void);
+uint8_t ESP8266_SendCmd(char *cmd, char *ack, uint32_t timeout);
+void ESP8266_SendData(uint8_t *data, uint16_t len);
 
-/* 核心发送接口 */
-bool ESP8266_SendCmd_Block(const char *cmd, const char *ack, uint32_t timeout_ms);
-HAL_StatusTypeDef ESP8266_Send_DMA(uint8_t *pData, uint16_t Size);
+// 鎻愪緵缁欏簲鐢ㄥ眰鐨勫畨鍏ㄥ抚璇诲彇鎺ュ彛
+uint16_t ESP8266_ReadFrame(uint8_t *buf, uint16_t max_len);
 
-#endif 
+#endif /* __ESP8266_H */

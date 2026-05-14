@@ -2,8 +2,6 @@
 #include "esp8266.h"
 #include "config.h"
 #include "sht30.h"
-#include <stdio.h>
-#include <string.h>
 
 bool App_MQTT_Init(void)
 {

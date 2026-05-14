@@ -116,7 +116,7 @@ uint32_t ring_buffer_read_multi(ring_buffer_t *rb, uint8_t *data, uint32_t len)
 }
 
 /**
- * @brief 获取可读字节数
+ * @brief 获取当前数据长度
  */
 uint32_t ring_buffer_available(ring_buffer_t *rb)
 {

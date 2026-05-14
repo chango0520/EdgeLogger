@@ -1,7 +1,6 @@
 #include "esp8266.h"
 #include "usart.h"
-#include <string.h>
-#include <stdio.h>
+
 
 // 内部 DMA 接收缓冲区（不对外暴露）
 static uint8_t dma_rx_buf[ESP8266_RX_BUF_SIZE];
@@ -74,7 +73,7 @@ uint8_t ESP8266_SendCmd(char *cmd, char *ack, uint32_t timeout)
                 else
                     frame[ESP8266_RX_BUF_SIZE - 1] = '\0';
 								
-								printf("[ESP8266 RX] %s\r\n", (char *)frame);
+								//printf("[ESP8266 RX] %s\r\n", (char *)frame);
 
                 if (strstr((char *)frame, ack) != NULL)
                     return 0;

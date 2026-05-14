@@ -3,6 +3,8 @@
 
 #include "stm32f4xx_hal.h"
 #include "ringbuffer.h"
+#include <string.h>
+#include <stdio.h>
 
 #define ESP8266_RX_BUF_SIZE 1024
 

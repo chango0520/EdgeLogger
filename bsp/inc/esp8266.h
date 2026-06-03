@@ -6,7 +6,11 @@
 #include <string.h>
 #include <stdio.h>
 
+/** @brief DMA 接收缓冲区大小 */
 #define ESP8266_RX_BUF_SIZE 1024
+
+/** @brief AT 指令回复检查缓冲区大小（只需匹配 "OK" 等短词） */
+#define AT_REPLY_BUF   128
 
 extern ring_buffer_t esp_rb;
 

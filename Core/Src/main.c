@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "dma.h"
 #include "i2c.h"
 #include "usart.h"
@@ -52,6 +53,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -76,9 +78,12 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	uint32_t last_pub_tick = 0;
-  float current_temp = 0.0f;
-  float current_hum = 0.0f;
+  /*
+   * 注：所有应用层变量已移至各任务内部。
+   * 传感器数据 (SHT30) → SensorTask 的 App_Sensor_Update()
+   * MQTT 发布周期     → MQTTTask 的 osKernelGetTickCount() 计时
+   * main() 仅负责 HAL 初始化、外设初始化、启动调度器。
+   */
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -104,36 +109,42 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-	printf("\r\n=======================================\r\n");
-  printf("[SYS] EdgeLogger System Startup...\r\n");
+  /*
+   * 打印系统启动信息。
+   * 注意：App_Sensor_Init() 和 App_MQTT_Init() 已移至各自的 FreeRTOS 任务中执行，
+   *       确保调度器启动后所有阻塞操作不会影响系统整体运行。
+   *       - SensorTask: 入口调用 App_Sensor_Init()
+   *       - MQTTTask:   入口调用 App_MQTT_Init() （含失败重试）
+   */
+  printf("\r\n=======================================\r\n");
+  printf("[SYS] EdgeLogger System Starting...\r\n");
+  printf("[SYS] HAL & Peripherals initialized, starting FreeRTOS scheduler...\r\n");
   printf("=======================================\r\n");
-
-  App_Sensor_Init();
-	if(App_MQTT_Init()) printf("[MQTT] MQTT_2_OneNET Initialization Completed!\r\n");
-	else {
-		printf("[MQTT] MQTT_2_OneNET Initialization Failed!\r\n");
-		HAL_Delay(2000);
-		NVIC_SystemReset();
-	}
-	last_pub_tick = HAL_GetTick();
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /*
+   * 调度器启动后控制权已交给 FreeRTOS，正常情况下永远不会执行到这里。
+   * 所有应用逻辑在独立的 FreeRTOS 任务中运行：
+   *   - StartDefaultTask : 系统健康监控（每 10s 打印堆栈状态）
+   *   - SensorTask       : SHT30 温湿度采集（每 2s）
+   *   - MQTTTask         : MQTT 通信（接收下发 + 每 5s 上报）
+   *
+   * 如果到达此处，说明调度器异常退出，进入错误处理。
+   */
   while (1)
-  {	
-		App_Sensor_Task();
-		App_MQTT_Task();
-		
-		if (HAL_GetTick() - last_pub_tick >= 5000)
-		{
-			last_pub_tick = HAL_GetTick();
-		
-			if (App_Sensor_GetData(&current_temp, &current_hum)) 
-				App_MQTT_Publish_SensorData(current_temp, current_hum);
-			else printf("[SYS] Sensor data invalid, skip publish.\r\n");
-		}
-		HAL_Delay(10);
+  {
+    /* 调度器已停止 —— 什么都不做 */
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -189,6 +200,28 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM7 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM7)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

@@ -40,6 +40,8 @@
 
 - `MDK-ARM/`：Keil 工程编译输出与工程管理目录。
 
+- `Middlewares/`：STM32CubeMX生成的FreeRTOS移植代码。
+
 - `bsp/`：板级支持包（Board Support Package），负责底层硬件设备的驱动封装。
 
   - `inc/` & `src/`
@@ -90,6 +92,14 @@
      
 
 ## 更新日志
+
+### v2.0.0（2026/5/30）
+
+- 移植FreeRTOS
+
+- 全面采用FreeRTOS任务代替裸机轮询
+
+  
 
 ### v1.1.0（2026/5/14）
 
